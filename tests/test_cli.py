@@ -98,3 +98,34 @@ class TestDoctor:
     def test_doctor_warns_missing_arduino_cli(self, mock_which, runner):
         result = runner.invoke(main, ["doctor"])
         assert "not found" in result.output.lower() or "not installed" in result.output.lower()
+
+
+class TestIntegration:
+    def test_full_workflow(self, runner):
+        """Test the full init -> read -> verify workflow."""
+        with runner.isolated_filesystem():
+            # Generate CLAUDE.md
+            result = runner.invoke(main, ["init", "--board", "esp32", "--port", "/dev/cu.usbserial-0001"])
+            assert result.exit_code == 0
+
+            # Verify CLAUDE.md content
+            content = Path("CLAUDE.md").read_text()
+            assert "# Embedded Development: ESP32" in content
+            assert "esp32:esp32:esp32" in content
+            assert "/dev/cu.usbserial-0001" in content
+            assert "arduino-cli compile" in content
+            assert "arduino-cli upload" in content
+            assert "Development Loop" in content
+            assert "serial.Serial" in content
+            assert "[READY]" in content
+            assert "ADC2" in content  # ESP32-specific pitfall
+
+            # Verify .cursorrules matches
+            assert Path(".cursorrules").read_text() == content
+
+    def test_help_output(self, runner):
+        result = runner.invoke(main, ["--help"])
+        assert result.exit_code == 0
+        assert "init" in result.output
+        assert "doctor" in result.output
+        assert "boards" in result.output
