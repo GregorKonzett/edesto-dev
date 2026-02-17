@@ -91,6 +91,13 @@ class TestRenderTemplate:
         result = render_template(board, port="/dev/ttyUSB0")
         assert "WiFi.h" not in result
 
+    def test_has_datasheets_section(self):
+        board = get_board("esp32")
+        result = render_template(board, port="/dev/ttyUSB0")
+        assert "## Datasheets" in result
+        assert "datasheets/" in result
+        assert ".pdf" in result.lower()
+
 
 class TestAllBoardsRender:
     @pytest.mark.parametrize("slug", [b.slug for b in list_boards()])

@@ -10,6 +10,7 @@ def render_template(board: Board, port: str) -> str:
         _commands(board, port),
         _dev_loop(board, port),
         _validation(board, port),
+        _datasheets(),
         _board_info(board),
     ]
     return "\n".join(sections)
@@ -90,6 +91,22 @@ Save this as `read_serial.py` and run with `python read_serial.py`. Parse the ou
 - Print `[READY]` when initialization is complete
 - Print `[ERROR] <description>` for any error conditions
 - Use tags for structured output: `[SENSOR] temp=23.4`, `[STATUS] running`"""
+
+
+def _datasheets() -> str:
+    return """
+## Datasheets
+
+Before writing or debugging firmware, check for datasheets in this project:
+
+1. **Check `datasheets/` folder first** — if it exists, read any relevant PDFs for pin configurations, register maps, timing specs, and electrical limits.
+2. **Check the project root and subfolders** for any other .pdf files that may be component datasheets or reference manuals.
+
+When you find a datasheet:
+- Read it to understand the hardware you're interfacing with.
+- Use the correct register addresses, pin assignments, and protocol settings from the datasheet — not from memory or guesswork.
+- Pay attention to voltage levels, max current ratings, and timing requirements.
+- If a datasheet contradicts the pin reference below, the datasheet is correct."""
 
 
 def _board_info(board: Board) -> str:
