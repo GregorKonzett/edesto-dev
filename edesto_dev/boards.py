@@ -10,6 +10,18 @@ class BoardNotFoundError(Exception):
     pass
 
 
+# VID/PID → candidate board slugs for USB-serial chips that don't carry board identity.
+# Used as a fallback when arduino-cli returns a port with no matching_boards.
+_VID_PID_HINTS: dict[tuple[int, int], list[str]] = {
+    # CH340 - common on ESP32, ESP8266, Arduino Nano clones
+    (0x1A86, 0x7523): ["esp32", "esp8266", "arduino-nano"],
+    # CH9102 - newer chip, mostly on ESP32 boards
+    (0x1A86, 0x55D4): ["esp32"],
+    # CP2102 - common on ESP32 DevKit and some ESP8266
+    (0x10C4, 0xEA60): ["esp32", "esp8266"],
+}
+
+
 @dataclass
 class Board:
     slug: str
@@ -46,10 +58,17 @@ def get_board(slug: str) -> Board:
     return BOARDS[slug]
 
 
+def _base_fqbn(fqbn: str) -> str:
+    """Return the first three colon-separated segments of an FQBN (vendor:arch:board)."""
+    parts = fqbn.split(":")
+    return ":".join(parts[:3])
+
+
 def get_board_by_fqbn(fqbn: str) -> Board | None:
-    """Find a board by its FQBN. Returns None if not found."""
+    """Find a board by its FQBN. Matches on the base vendor:arch:board portion."""
+    target = _base_fqbn(fqbn)
     for board in BOARDS.values():
-        if board.fqbn == fqbn:
+        if _base_fqbn(board.fqbn) == target:
             return board
     return None
 
@@ -79,14 +98,35 @@ def detect_boards() -> list[DetectedBoard]:
 
     detected = []
     for entry in data.get("detected_ports", []):
-        port = entry.get("port", {}).get("address", "")
+        port_info = entry.get("port", {})
+        port = port_info.get("address", "")
         if not port:
             continue
+
+        # Try FQBN matching first (takes priority)
+        fqbn_matched = False
         for match in entry.get("matching_boards", []):
             fqbn = match.get("fqbn", "")
             board = get_board_by_fqbn(fqbn)
             if board:
                 detected.append(DetectedBoard(board=board, port=port))
+                fqbn_matched = True
+
+        # VID/PID fallback for generic USB-serial chips
+        if not fqbn_matched:
+            props = port_info.get("properties", {})
+            vid = props.get("vid", "")
+            pid = props.get("pid", "")
+            if vid and pid:
+                try:
+                    key = (int(vid, 16), int(pid, 16))
+                except ValueError:
+                    continue
+                for slug in _VID_PID_HINTS.get(key, []):
+                    board = BOARDS.get(slug)
+                    if board:
+                        detected.append(DetectedBoard(board=board, port=port))
+
     return detected
 
 
@@ -95,7 +135,7 @@ def detect_boards() -> list[DetectedBoard]:
 _register(Board(
     slug="esp32",
     name="ESP32",
-    fqbn="esp32:esp32:esp32",
+    fqbn="esp32:esp32:esp32:UploadSpeed=115200",
     core="esp32:esp32",
     core_url="https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json",
     baud_rate=115200,
@@ -148,7 +188,7 @@ _register(Board(
 _register(Board(
     slug="esp32s3",
     name="ESP32-S3",
-    fqbn="esp32:esp32:esp32s3",
+    fqbn="esp32:esp32:esp32s3:UploadSpeed=115200",
     core="esp32:esp32",
     core_url="https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json",
     baud_rate=115200,
@@ -194,7 +234,7 @@ _register(Board(
 _register(Board(
     slug="esp32c3",
     name="ESP32-C3",
-    fqbn="esp32:esp32:esp32c3",
+    fqbn="esp32:esp32:esp32c3:UploadSpeed=115200",
     core="esp32:esp32",
     core_url="https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json",
     baud_rate=115200,
@@ -238,7 +278,7 @@ _register(Board(
 _register(Board(
     slug="esp32c6",
     name="ESP32-C6",
-    fqbn="esp32:esp32:esp32c6",
+    fqbn="esp32:esp32:esp32c6:UploadSpeed=115200",
     core="esp32:esp32",
     core_url="https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json",
     baud_rate=115200,

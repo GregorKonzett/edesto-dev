@@ -10,7 +10,7 @@ from edesto_dev.boards import get_board, get_board_by_fqbn, list_boards, detect_
 class TestGetBoard:
     def test_esp32_returns_correct_fqbn(self):
         board = get_board("esp32")
-        assert board.fqbn == "esp32:esp32:esp32"
+        assert board.fqbn == "esp32:esp32:esp32:UploadSpeed=115200"
 
     def test_esp32_has_name(self):
         board = get_board("esp32")
@@ -100,7 +100,7 @@ class TestAllBoards:
     def test_board_fqbn_format(self, slug):
         board = get_board(slug)
         parts = board.fqbn.split(":")
-        assert len(parts) == 3, f"{slug} FQBN should have 3 colon-separated parts"
+        assert len(parts) >= 3, f"{slug} FQBN should have at least 3 colon-separated parts"
 
 
 class TestGetBoardByFqbn:
@@ -177,6 +177,62 @@ ARDUINO_CLI_UNRECOGNIZED = json.dumps({
     ]
 })
 
+# CH340 port with no matching_boards (typical ESP32 via generic USB-serial)
+ARDUINO_CLI_CH340_NO_MATCH = json.dumps({
+    "detected_ports": [
+        {
+            "port": {
+                "address": "/dev/cu.usbserial-110",
+                "protocol": "serial",
+                "protocol_label": "Serial Port (USB)",
+                "properties": {"pid": "0x7523", "vid": "0x1A86"},
+            }
+        }
+    ]
+})
+
+# CH340 port with FQBN match (FQBN should take priority over VID/PID)
+ARDUINO_CLI_CH340_WITH_FQBN = json.dumps({
+    "detected_ports": [
+        {
+            "matching_boards": [
+                {"name": "ESP32 Dev Module", "fqbn": "esp32:esp32:esp32"}
+            ],
+            "port": {
+                "address": "/dev/cu.usbserial-110",
+                "protocol": "serial",
+                "properties": {"pid": "0x7523", "vid": "0x1A86"},
+            },
+        }
+    ]
+})
+
+# Unknown VID/PID, no matching_boards
+ARDUINO_CLI_UNKNOWN_VID_PID = json.dumps({
+    "detected_ports": [
+        {
+            "port": {
+                "address": "/dev/ttyUSB0",
+                "protocol": "serial",
+                "properties": {"pid": "0xFFFF", "vid": "0xFFFF"},
+            }
+        }
+    ]
+})
+
+# CH340 with lowercase VID/PID
+ARDUINO_CLI_CH340_LOWERCASE = json.dumps({
+    "detected_ports": [
+        {
+            "port": {
+                "address": "/dev/cu.usbserial-110",
+                "protocol": "serial",
+                "properties": {"pid": "0x7523", "vid": "0x1a86"},
+            }
+        }
+    ]
+})
+
 
 def _mock_subprocess(stdout, returncode=0):
     mock = MagicMock()
@@ -225,3 +281,35 @@ class TestDetectBoards:
         mock_run.return_value = _mock_subprocess("", returncode=1)
         detected = detect_boards()
         assert detected == []
+
+    @patch("edesto_dev.boards.subprocess.run")
+    def test_vid_pid_fallback_ch340(self, mock_run):
+        mock_run.return_value = _mock_subprocess(ARDUINO_CLI_CH340_NO_MATCH)
+        detected = detect_boards()
+        slugs = [d.board.slug for d in detected]
+        assert "esp32" in slugs
+        assert "esp8266" in slugs
+        assert "arduino-nano" in slugs
+        assert all(d.port == "/dev/cu.usbserial-110" for d in detected)
+
+    @patch("edesto_dev.boards.subprocess.run")
+    def test_fqbn_takes_priority_over_vid_pid(self, mock_run):
+        mock_run.return_value = _mock_subprocess(ARDUINO_CLI_CH340_WITH_FQBN)
+        detected = detect_boards()
+        assert len(detected) == 1
+        assert detected[0].board.slug == "esp32"
+
+    @patch("edesto_dev.boards.subprocess.run")
+    def test_unknown_vid_pid_returns_empty(self, mock_run):
+        mock_run.return_value = _mock_subprocess(ARDUINO_CLI_UNKNOWN_VID_PID)
+        detected = detect_boards()
+        assert detected == []
+
+    @patch("edesto_dev.boards.subprocess.run")
+    def test_vid_pid_case_insensitive(self, mock_run):
+        mock_run.return_value = _mock_subprocess(ARDUINO_CLI_CH340_LOWERCASE)
+        detected = detect_boards()
+        slugs = [d.board.slug for d in detected]
+        assert "esp32" in slugs
+        assert "esp8266" in slugs
+        assert "arduino-nano" in slugs

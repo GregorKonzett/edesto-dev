@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "edesto-dev"
-version = "0.1.0"
+version = "0.3.0"
 description = "Use Claude Code for embedded development. One command to set up the bridge between your AI agent and your hardware."
 readme = "README.md"
 license = "MIT"
