@@ -14,7 +14,7 @@ pipx install edesto-dev
 
 ```bash
 # 1. Plug in your board and run:
-edesto init --board esp32 --port /dev/cu.usbserial-0001
+edesto init
 
 # 2. Open Claude Code in the same directory:
 claude
@@ -23,7 +23,13 @@ claude
 # "The sensor readings are wrong. Find and fix the bug."
 ```
 
-That's it. Claude Code reads the generated `CLAUDE.md`, writes firmware, flashes it to your board, reads serial output to verify it works, and iterates until it's correct.
+That's it. `edesto init` auto-detects your board and serial port via `arduino-cli`. Claude Code reads the generated `CLAUDE.md`, writes firmware, flashes it to your board, reads serial output to verify it works, and iterates until it's correct.
+
+You can also specify the board and port manually:
+
+```bash
+edesto init --board esp32 --port /dev/cu.usbserial-0001
+```
 
 ## How It Works
 
@@ -40,7 +46,9 @@ The validation step is what makes this work. The `CLAUDE.md` teaches Claude Code
 ## Commands
 
 ```bash
-edesto init --board <slug> --port <port>   # Generate CLAUDE.md for your board
+edesto init                                 # Auto-detect board and port, generate CLAUDE.md
+edesto init --board esp32                   # Specify board, auto-detect port
+edesto init --board esp32 --port /dev/ttyUSB0  # Fully manual
 edesto boards                               # List supported boards
 edesto doctor                               # Check your environment
 ```

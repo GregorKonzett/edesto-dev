@@ -3,7 +3,14 @@
 import ast
 from pathlib import Path
 
+import pytest
+
 EXAMPLES_DIR = Path(__file__).parent.parent / "examples"
+
+pytestmark = pytest.mark.skipif(
+    not EXAMPLES_DIR.exists(),
+    reason="examples/ directory not present (e.g. installed from sdist)",
+)
 
 
 class TestSensorDebugExample:

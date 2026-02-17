@@ -33,3 +33,9 @@ edesto = "edesto_dev.cli:main"
 [project.urls]
 Homepage = "https://edesto.com"
 Repository = "https://github.com/edesto/edesto-dev"
+
+[tool.setuptools.packages.find]
+include = ["edesto_dev*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
