@@ -1,0 +1,126 @@
+"""Tests for CLAUDE.md template rendering."""
+
+import re
+
+import pytest
+from edesto_dev.boards import get_board, list_boards
+from edesto_dev.templates import render_template
+
+
+class TestRenderTemplate:
+    def test_contains_board_name(self):
+        board = get_board("esp32")
+        result = render_template(board, port="/dev/ttyUSB0")
+        assert "ESP32" in result
+
+    def test_contains_fqbn(self):
+        board = get_board("esp32")
+        result = render_template(board, port="/dev/ttyUSB0")
+        assert "esp32:esp32:esp32" in result
+
+    def test_contains_port(self):
+        board = get_board("esp32")
+        result = render_template(board, port="/dev/ttyUSB0")
+        assert "/dev/ttyUSB0" in result
+
+    def test_no_unfilled_placeholders(self):
+        board = get_board("esp32")
+        result = render_template(board, port="/dev/ttyUSB0")
+        placeholders = re.findall(r"\{[a-z_]+\}", result)
+        assert placeholders == [], f"Unfilled placeholders: {placeholders}"
+
+    def test_has_hardware_section(self):
+        board = get_board("esp32")
+        result = render_template(board, port="/dev/ttyUSB0")
+        assert "## Hardware" in result
+
+    def test_has_commands_section(self):
+        board = get_board("esp32")
+        result = render_template(board, port="/dev/ttyUSB0")
+        assert "## Commands" in result
+        assert "arduino-cli compile" in result
+        assert "arduino-cli upload" in result
+
+    def test_has_development_loop(self):
+        board = get_board("esp32")
+        result = render_template(board, port="/dev/ttyUSB0")
+        assert "## Development Loop" in result
+        assert "Compile" in result
+        assert "Flash" in result
+        assert "Validate" in result
+
+    def test_has_serial_validation(self):
+        board = get_board("esp32")
+        result = render_template(board, port="/dev/ttyUSB0")
+        assert "serial.Serial" in result
+        assert "[READY]" in result
+        assert "115200" in result
+
+    def test_has_serial_conventions(self):
+        board = get_board("esp32")
+        result = render_template(board, port="/dev/ttyUSB0")
+        assert "Serial.begin(115200)" in result
+        assert "[READY]" in result
+        assert "[ERROR]" in result
+        assert "[SENSOR]" in result
+
+    def test_has_board_specific_section(self):
+        board = get_board("esp32")
+        result = render_template(board, port="/dev/ttyUSB0")
+        assert "Pin Reference" in result
+        assert "Common Pitfalls" in result
+
+    def test_has_pitfalls(self):
+        board = get_board("esp32")
+        result = render_template(board, port="/dev/ttyUSB0")
+        assert "ADC2" in result
+
+    def test_has_pin_notes(self):
+        board = get_board("esp32")
+        result = render_template(board, port="/dev/ttyUSB0")
+        assert "GPIO 2: Onboard LED" in result
+
+    def test_wifi_board_has_capabilities(self):
+        board = get_board("esp32")
+        result = render_template(board, port="/dev/ttyUSB0")
+        assert "Capabilities" in result
+        assert "#include <WiFi.h>" in result
+
+    def test_non_wifi_board_no_wifi_includes(self):
+        board = get_board("arduino-uno")
+        result = render_template(board, port="/dev/ttyUSB0")
+        assert "WiFi.h" not in result
+
+
+class TestAllBoardsRender:
+    @pytest.mark.parametrize("slug", [b.slug for b in list_boards()])
+    def test_renders_without_error(self, slug):
+        board = get_board(slug)
+        result = render_template(board, port="/dev/ttyUSB0")
+        assert len(result) > 100
+
+    @pytest.mark.parametrize("slug", [b.slug for b in list_boards()])
+    def test_contains_fqbn(self, slug):
+        board = get_board(slug)
+        result = render_template(board, port="/dev/ttyUSB0")
+        assert board.fqbn in result
+
+    @pytest.mark.parametrize("slug", [b.slug for b in list_boards()])
+    def test_has_validation_section(self, slug):
+        board = get_board(slug)
+        result = render_template(board, port="/dev/ttyUSB0")
+        assert "Validation" in result
+        assert "serial.Serial" in result
+
+    @pytest.mark.parametrize("slug", [b.slug for b in list_boards()])
+    def test_has_development_loop(self, slug):
+        board = get_board(slug)
+        result = render_template(board, port="/dev/ttyUSB0")
+        assert "Development Loop" in result
+
+    @pytest.mark.parametrize("slug", [b.slug for b in list_boards()])
+    def test_no_unfilled_placeholders(self, slug):
+        board = get_board(slug)
+        result = render_template(board, port="/dev/ttyUSB0")
+        placeholders = re.findall(r"\{[a-z_]+\}", result)
+        assert placeholders == [], f"Unfilled placeholders in {slug}: {placeholders}"
