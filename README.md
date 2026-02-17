@@ -4,6 +4,12 @@
 
 AI coding agents stop at the terminal. `edesto init` teaches them how to compile, flash, and validate firmware on your actual hardware. No extra subscriptions. No cloud. No datasheets leaving your machine.
 
+
+
+https://github.com/user-attachments/assets/ac59418e-fce9-466f-a85b-55b28294fcc9
+
+
+
 ## Install
 
 ```
@@ -42,6 +48,8 @@ edesto init --board esp32 --port /dev/cu.usbserial-0001
 5. **Iterate** if validation fails
 
 The validation step is what makes this work. The `CLAUDE.md` teaches Claude Code serial conventions (`[READY]`, `[ERROR]`, `[SENSOR] key=value`) and gives it a Python snippet to read device output. The agent verifies its own changes on real hardware.
+
+If you have any datasheets, just drop them into `./datasheets` and Claude will find them. You can also just leave them anywhere in the directory.
 
 ## Commands
 
