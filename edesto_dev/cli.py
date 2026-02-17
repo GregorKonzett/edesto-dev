@@ -7,7 +7,7 @@ from pathlib import Path
 
 import click
 
-from edesto_dev.boards import get_board, list_boards, BoardNotFoundError
+from edesto_dev.boards import get_board, list_boards, detect_boards, BoardNotFoundError
 from edesto_dev.templates import render_template
 
 
@@ -22,19 +22,57 @@ def main():
 @click.option("--port", type=str, help="Serial port (e.g. /dev/ttyUSB0, /dev/cu.usbserial-0001).")
 def init(board, port):
     """Generate a CLAUDE.md for your board."""
-    if not board:
-        click.echo("Error: --board is required. Use 'edesto boards' to list supported boards.")
-        raise SystemExit(1)
+    if board and port:
+        # Both provided — skip detection
+        try:
+            board_def = get_board(board)
+        except BoardNotFoundError as e:
+            click.echo(f"Error: {e}")
+            raise SystemExit(1)
+    else:
+        # Need auto-detection for at least one value
+        detected = detect_boards()
 
-    if not port:
-        click.echo("Error: --port is required. Check 'ls /dev/tty*' or 'ls /dev/cu.*' for your serial port.")
-        raise SystemExit(1)
-
-    try:
-        board_def = get_board(board)
-    except BoardNotFoundError as e:
-        click.echo(f"Error: {e}")
-        raise SystemExit(1)
+        if board and not port:
+            # Board specified, find its port from detected devices
+            try:
+                board_def = get_board(board)
+            except BoardNotFoundError as e:
+                click.echo(f"Error: {e}")
+                raise SystemExit(1)
+            matches = [d for d in detected if d.board.slug == board]
+            if matches:
+                port = matches[0].port
+                click.echo(f"Detected {board_def.name} on {port}")
+            else:
+                click.echo(f"Error: Could not detect port for {board}. Specify with --port.")
+                raise SystemExit(1)
+        elif not board and not port:
+            # Full auto-detection
+            if not detected:
+                click.echo("Error: No boards detected. Is a board connected via USB?")
+                click.echo("Make sure arduino-cli is installed and the board core is set up.")
+                click.echo("You can also specify manually: edesto init --board esp32 --port /dev/ttyUSB0")
+                raise SystemExit(1)
+            elif len(detected) == 1:
+                board_def = detected[0].board
+                port = detected[0].port
+                click.echo(f"Detected {board_def.name} on {port}")
+            else:
+                click.echo("Multiple boards detected:\n")
+                for i, d in enumerate(detected, 1):
+                    click.echo(f"  {i}. {d.board.name} on {d.port}")
+                click.echo()
+                choice = click.prompt("Which board?", type=int)
+                if choice < 1 or choice > len(detected):
+                    click.echo("Invalid choice.")
+                    raise SystemExit(1)
+                board_def = detected[choice - 1].board
+                port = detected[choice - 1].port
+        else:
+            # port specified but not board — unusual, just require board
+            click.echo("Error: --board is required when using --port. Use 'edesto boards' to list supported boards.")
+            raise SystemExit(1)
 
     content = render_template(board_def, port=port)
 

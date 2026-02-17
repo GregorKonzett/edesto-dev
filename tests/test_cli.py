@@ -1,12 +1,14 @@
 """Tests for the edesto CLI."""
 
+import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import pytest
 from click.testing import CliRunner
 
 from edesto_dev.cli import main
+from edesto_dev.boards import DetectedBoard, get_board
 
 
 @pytest.fixture
@@ -64,6 +66,63 @@ class TestInit:
                 result = runner.invoke(main, ["init", "--board", board.slug, "--port", "/dev/ttyUSB0"])
                 assert result.exit_code == 0, f"Failed for {board.slug}: {result.output}"
                 assert Path("CLAUDE.md").exists()
+
+
+class TestInitAutoDetect:
+    @patch("edesto_dev.cli.detect_boards")
+    def test_auto_detects_single_board(self, mock_detect, runner):
+        mock_detect.return_value = [DetectedBoard(board=get_board("esp32"), port="/dev/cu.usbserial-0001")]
+        with runner.isolated_filesystem():
+            result = runner.invoke(main, ["init"])
+            assert result.exit_code == 0
+            assert Path("CLAUDE.md").exists()
+            content = Path("CLAUDE.md").read_text()
+            assert "esp32:esp32:esp32" in content
+            assert "/dev/cu.usbserial-0001" in content
+
+    @patch("edesto_dev.cli.detect_boards")
+    def test_auto_detect_prints_what_it_found(self, mock_detect, runner):
+        mock_detect.return_value = [DetectedBoard(board=get_board("esp32"), port="/dev/cu.usbserial-0001")]
+        with runner.isolated_filesystem():
+            result = runner.invoke(main, ["init"])
+            assert "Detected" in result.output or "detected" in result.output
+            assert "ESP32" in result.output
+
+    @patch("edesto_dev.cli.detect_boards")
+    def test_auto_detect_multiple_boards_asks_user(self, mock_detect, runner):
+        mock_detect.return_value = [
+            DetectedBoard(board=get_board("esp32"), port="/dev/cu.usbserial-0001"),
+            DetectedBoard(board=get_board("arduino-uno"), port="/dev/ttyACM0"),
+        ]
+        with runner.isolated_filesystem():
+            result = runner.invoke(main, ["init"], input="1\n")
+            assert result.exit_code == 0
+            assert Path("CLAUDE.md").exists()
+
+    @patch("edesto_dev.cli.detect_boards")
+    def test_auto_detect_no_boards_shows_error(self, mock_detect, runner):
+        mock_detect.return_value = []
+        with runner.isolated_filesystem():
+            result = runner.invoke(main, ["init"])
+            assert result.exit_code != 0
+            assert "No boards detected" in result.output or "no boards" in result.output.lower()
+
+    @patch("edesto_dev.cli.detect_boards")
+    def test_board_flag_skips_detection(self, mock_detect, runner):
+        """When --board and --port are provided, don't call detect_boards."""
+        with runner.isolated_filesystem():
+            result = runner.invoke(main, ["init", "--board", "esp32", "--port", "/dev/ttyUSB0"])
+            assert result.exit_code == 0
+            mock_detect.assert_not_called()
+
+    @patch("edesto_dev.cli.detect_boards")
+    def test_board_flag_without_port_detects_port(self, mock_detect, runner):
+        mock_detect.return_value = [DetectedBoard(board=get_board("esp32"), port="/dev/cu.usbserial-0001")]
+        with runner.isolated_filesystem():
+            result = runner.invoke(main, ["init", "--board", "esp32"])
+            assert result.exit_code == 0
+            content = Path("CLAUDE.md").read_text()
+            assert "/dev/cu.usbserial-0001" in content
 
 
 class TestBoards:

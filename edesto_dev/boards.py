@@ -1,5 +1,7 @@
 """Board definitions for edesto-dev."""
 
+import json
+import subprocess
 from dataclasses import dataclass, field
 
 
@@ -23,6 +25,12 @@ class Board:
     includes: dict[str, str] = field(default_factory=dict)
 
 
+@dataclass
+class DetectedBoard:
+    board: Board
+    port: str
+
+
 BOARDS: dict[str, Board] = {}
 
 
@@ -38,9 +46,48 @@ def get_board(slug: str) -> Board:
     return BOARDS[slug]
 
 
+def get_board_by_fqbn(fqbn: str) -> Board | None:
+    """Find a board by its FQBN. Returns None if not found."""
+    for board in BOARDS.values():
+        if board.fqbn == fqbn:
+            return board
+    return None
+
+
 def list_boards() -> list[Board]:
     """Return all supported boards."""
     return list(BOARDS.values())
+
+
+def detect_boards() -> list[DetectedBoard]:
+    """Detect connected boards via arduino-cli. Returns empty list on failure."""
+    try:
+        result = subprocess.run(
+            ["arduino-cli", "board", "list", "--format", "json"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return []
+
+    if result.returncode != 0:
+        return []
+
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+
+    detected = []
+    for entry in data.get("detected_ports", []):
+        port = entry.get("port", {}).get("address", "")
+        if not port:
+            continue
+        for match in entry.get("matching_boards", []):
+            fqbn = match.get("fqbn", "")
+            board = get_board_by_fqbn(fqbn)
+            if board:
+                detected.append(DetectedBoard(board=board, port=port))
+    return detected
 
 
 # --- ESP32 ---

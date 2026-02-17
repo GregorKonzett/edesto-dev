@@ -1,7 +1,10 @@
 """Tests for board definitions."""
 
+import json
+from unittest.mock import patch, MagicMock
+
 import pytest
-from edesto_dev.boards import get_board, list_boards, BoardNotFoundError
+from edesto_dev.boards import get_board, get_board_by_fqbn, list_boards, detect_boards, BoardNotFoundError
 
 
 class TestGetBoard:
@@ -98,3 +101,127 @@ class TestAllBoards:
         board = get_board(slug)
         parts = board.fqbn.split(":")
         assert len(parts) == 3, f"{slug} FQBN should have 3 colon-separated parts"
+
+
+class TestGetBoardByFqbn:
+    def test_finds_esp32(self):
+        board = get_board_by_fqbn("esp32:esp32:esp32")
+        assert board.slug == "esp32"
+
+    def test_finds_arduino_uno(self):
+        board = get_board_by_fqbn("arduino:avr:uno")
+        assert board.slug == "arduino-uno"
+
+    def test_unknown_fqbn_returns_none(self):
+        assert get_board_by_fqbn("unknown:unknown:unknown") is None
+
+    @pytest.mark.parametrize("slug", ALL_BOARD_SLUGS)
+    def test_all_boards_findable_by_fqbn(self, slug):
+        board = get_board(slug)
+        found = get_board_by_fqbn(board.fqbn)
+        assert found is not None
+        assert found.slug == slug
+
+
+# Sample arduino-cli board list JSON (modern format)
+ARDUINO_CLI_ONE_BOARD = json.dumps({
+    "detected_ports": [
+        {
+            "matching_boards": [
+                {"name": "ESP32 Dev Module", "fqbn": "esp32:esp32:esp32"}
+            ],
+            "port": {
+                "address": "/dev/cu.usbserial-0001",
+                "label": "/dev/cu.usbserial-0001",
+                "protocol": "serial",
+                "protocol_label": "Serial Port (USB)",
+            },
+        }
+    ]
+})
+
+ARDUINO_CLI_TWO_BOARDS = json.dumps({
+    "detected_ports": [
+        {
+            "matching_boards": [
+                {"name": "ESP32 Dev Module", "fqbn": "esp32:esp32:esp32"}
+            ],
+            "port": {
+                "address": "/dev/cu.usbserial-0001",
+                "protocol": "serial",
+            },
+        },
+        {
+            "matching_boards": [
+                {"name": "Arduino Uno", "fqbn": "arduino:avr:uno"}
+            ],
+            "port": {
+                "address": "/dev/ttyACM0",
+                "protocol": "serial",
+            },
+        },
+    ]
+})
+
+ARDUINO_CLI_NO_BOARDS = json.dumps({"detected_ports": []})
+
+ARDUINO_CLI_UNRECOGNIZED = json.dumps({
+    "detected_ports": [
+        {
+            "matching_boards": [],
+            "port": {
+                "address": "/dev/ttyUSB0",
+                "protocol": "serial",
+            },
+        }
+    ]
+})
+
+
+def _mock_subprocess(stdout, returncode=0):
+    mock = MagicMock()
+    mock.stdout = stdout
+    mock.returncode = returncode
+    return mock
+
+
+class TestDetectBoards:
+    @patch("edesto_dev.boards.subprocess.run")
+    def test_detects_one_board(self, mock_run):
+        mock_run.return_value = _mock_subprocess(ARDUINO_CLI_ONE_BOARD)
+        detected = detect_boards()
+        assert len(detected) == 1
+        assert detected[0].board.slug == "esp32"
+        assert detected[0].port == "/dev/cu.usbserial-0001"
+
+    @patch("edesto_dev.boards.subprocess.run")
+    def test_detects_two_boards(self, mock_run):
+        mock_run.return_value = _mock_subprocess(ARDUINO_CLI_TWO_BOARDS)
+        detected = detect_boards()
+        assert len(detected) == 2
+        slugs = [d.board.slug for d in detected]
+        assert "esp32" in slugs
+        assert "arduino-uno" in slugs
+
+    @patch("edesto_dev.boards.subprocess.run")
+    def test_no_boards_returns_empty(self, mock_run):
+        mock_run.return_value = _mock_subprocess(ARDUINO_CLI_NO_BOARDS)
+        detected = detect_boards()
+        assert detected == []
+
+    @patch("edesto_dev.boards.subprocess.run")
+    def test_unrecognized_board_skipped(self, mock_run):
+        mock_run.return_value = _mock_subprocess(ARDUINO_CLI_UNRECOGNIZED)
+        detected = detect_boards()
+        assert detected == []
+
+    @patch("edesto_dev.boards.subprocess.run", side_effect=FileNotFoundError)
+    def test_arduino_cli_not_installed(self, mock_run):
+        detected = detect_boards()
+        assert detected == []
+
+    @patch("edesto_dev.boards.subprocess.run")
+    def test_arduino_cli_fails(self, mock_run):
+        mock_run.return_value = _mock_subprocess("", returncode=1)
+        detected = detect_boards()
+        assert detected == []
